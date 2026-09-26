@@ -39,15 +39,13 @@ SAMPLING_STEPS = None          # set from the CLI; falls back to 20
 LOG_EVERY = 1000               # history sampling interval; smaller = smoother curves
 PROBE_EVERY = 2000
 MIN_SNR_FLOOR = None           # set from the CLI
-PRECOND_LAMBDA = 0.5          # transition errors cost ~3x smooth errors; see flow.py
-MULTI_LAGS = (1, 2, 4, 8, 16, 32)   # dyadic lags: adjacent steps up to the signal period
 
 VARIANTS = {
-    # ---- final leave-one-out design (round 6) -------------------------------
+    # ---- leave-one-out arms --------------------------------------------------
     # `ours` is the method; every `no_*` arm is `ours` minus exactly one
     # component, so a difference is attributable to that component alone.
-    "ours":            {"core.ot_coupling": True},
-    "no_ot":           {},
+    "ours":            {},
+    "no_ot":           {"core.ot_coupling": False},
     "no_rope":         {"core.ot_coupling": True, "denoiser.use_rope": False},
     "no_selfcond":     {"core.ot_coupling": True, "denoiser.use_self_cond": False},
     "no_minsnr":       {"core.ot_coupling": True, "core.use_min_snr": False},
@@ -57,27 +55,11 @@ VARIANTS = {
     "floor000":        {"core.ot_coupling": True, "core.min_snr_floor": 0.0},
     "floor005":        {"core.ot_coupling": True, "core.min_snr_floor": 0.05},
     "floor010":        {"core.ot_coupling": True, "core.min_snr_floor": 0.10},
-    # ---- generative-core arm (round 7) --------------------------------------
+    # ---- generative-core arm -------------------------------------------------
     # Swaps rectified flow for eps-prediction DDPM/DDIM and changes nothing
     # else: diffusion.py carries the same coupling and the same floored
     # min-SNR weight, so a difference is attributable to the core alone.
     "ddpm_core":       {"core.ot_coupling": True, "core.kind": "ddpm"},
-    # ---- exploratory arms kept for the record; all four were rejected -------
-    "baseline":        {},
-    "precond":         {"core.precond_lambda": PRECOND_LAMBDA},
-    "lagbias":         {"denoiser.use_lag_bias": True},
-    "precond_lagbias": {"core.precond_lambda": PRECOND_LAMBDA, "denoiser.use_lag_bias": True},
-    "ot":              {"core.precond_lambda": PRECOND_LAMBDA, "denoiser.use_lag_bias": True,
-                        "core.ot_coupling": True},
-    # round 5: `ot` above bundles three features, so a win there is not
-    # attributable. This is the coupling alone, against `baseline`.
-    "ot_only":         {"core.ot_coupling": True},
-    # round 4: does the difference metric help more across scales, and does a
-    # prior that already has the data's spectrum help on top of it?
-    "mlag":            {"core.precond_lambda": PRECOND_LAMBDA, "core.precond_lags": MULTI_LAGS},
-    "cprior":          {"core.precond_lambda": PRECOND_LAMBDA, "core.colored_prior": True},
-    "mlag_cprior":     {"core.precond_lambda": PRECOND_LAMBDA, "core.precond_lags": MULTI_LAGS,
-                        "core.colored_prior": True},
 }
 SEQ_LEN_OVERRIDE = {}          # dataset -> sequence length, set from the CLI
 
@@ -95,7 +77,7 @@ def build_cfg(dataset, variant, probe_every):
         over["core.min_snr_floor"] = MIN_SNR_FLOOR
     over.update(VARIANTS[variant])
     cfg = RecFlowTimeConfig.for_dataset(T, meta["n_features"], **over)
-    cfg.spectral.enabled = False          # no loss on generated samples in this round
+    cfg.spectral.enabled = False          # no loss on generated samples
     return cfg, X, meta
 
 
@@ -158,8 +140,8 @@ def run(dataset, variant, out_dir, seed=0, probe_every=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--datasets", default="sines")
-    ap.add_argument("--variants", default="baseline,precond,lagbias,precond_lagbias")
-    ap.add_argument("--dir", default=os.path.join("results", "round2"))
+    ap.add_argument("--variants", default="ours")
+    ap.add_argument("--dir", default=os.path.join("results", "run"))
     ap.add_argument("--seq-len", default="", help="e.g. ecg:64:96 -> dataset:T:d_model")
     ap.add_argument("--seeds", default="0", help="comma-separated training seeds")
     ap.add_argument("--steps", type=int, default=None,

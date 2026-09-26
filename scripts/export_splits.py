@@ -1,14 +1,14 @@
-"""Export the canonical train/val/test splits used by every final run.
+"""Export the canonical train/validation/test splits.
 
-Competing methods must be trained on exactly the same Xtr and evaluated
-against exactly the same Xte as our method, or a difference in scores is
-confounded with a difference in data. This writes the arrays that
-`run_variants.py` itself constructs, via the same calls in the same order,
-so there is one definition of the data and everyone reads it from disk.
+Every method compared in the paper must be trained on exactly the same training
+split and evaluated against exactly the same test split, or a difference in
+scores is confounded with a difference in data. This writes the arrays that
+`run_variants.py` itself constructs, through the same calls in the same order,
+so there is one definition of the data and every method reads it from disk.
 
-Each method should write its samples as `<dataset>_<method>_data.npz` with
-keys matching ours (real_test, real_train, real_val, generated), after which
-`evaluate_saved.py --suffix <method>` scores it with no changes.
+A competing method should write its samples as `<dataset>_<method>_data.npz`
+with the same keys (real_test, real_train, real_val, generated), after which
+`evaluate_saved.py --suffix <method>` scores it unchanged.
 """
 import os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
