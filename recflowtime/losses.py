@@ -1,31 +1,16 @@
-"""The RecFlowTime objective.
+"""The training objective.
 
-    L = L_flow  +  lambda_dist * L_sigMMD  +  lambda_spec * L_spec
+    L = L_flow  [ + lambda_dist * L_dist + lambda_spec * L_spec ]
 
-Three terms, two of them non-parametric. `L_flow` is the (min-SNR weighted)
-conditional flow-matching loss from `flow.py`. `L_sigMMD` is signature-MMD
-between an independent real batch and a genuinely unconditional generated
-batch from the model's own reverse ODE (`distributional.py`). `L_spec` is
-the two-sided log-power-spectrum discrepancy (`spectral.py`).
+`L_flow` is the min-SNR-weighted conditional flow-matching loss from `flow.py`,
+and it is the whole objective in the reported configuration. The two bracketed
+terms are optional regularisers evaluated only during the joint stage, which is
+disabled by default (`train.joint_steps = 0`, `spectral.enabled = False`); they
+are retained so the code that produced the development runs stays runnable, and
+they contribute to no reported number.
 
-No critic networks, no discriminator, no adversarial game, and nothing that
-needs pretraining before the generator can be trained: both regularisers are
-statistics of a batch, computable from step one.
-
-Why two regularisers and not one. They are sensitive to disjoint failures.
-`L_spec` constrains second-order temporal structure -- by Wiener-Khinchin
-the power spectrum is the Fourier transform of the autocorrelation, so
-matching the log spectrum pins the ACF -- but it is computed per-batch on
-marginal statistics and says nothing about whether the *population* of
-sequences covers the data (a generator emitting one perfectly-spectrally-
-matched trajectory forever would satisfy it). `L_sigMMD` is a
-population-level two-sample discrepancy and detects exactly that collapse,
-plus ordering and cross-feature lead-lag structure a flattened-vector
-kernel would miss. Neither implies the other.
-
-`DiscrepancyLoss` (frozen masked critics, two-sided) is retained only to
-build the TIDE baseline for comparison; it is inert unless
-`cfg.aux.enabled`.
+`DiscrepancyLoss` is likewise inert unless `cfg.aux.enabled`, which is False by
+default.
 """
 import torch
 import torch.nn as nn
@@ -38,8 +23,8 @@ KINDS = ("int", "ext")
 
 
 class DiscrepancyLoss(nn.Module):
-    """Two-sided masked-critic discrepancy. BASELINE ONLY -- not part of
-    RecFlowTime; see this module's docstring."""
+    """Two-sided masked-critic discrepancy. Inert unless `cfg.aux.enabled`,
+    which is False in every reported run."""
 
     def __init__(self, critics, ref_ema_decay=0.99, one_sided=False):
         super().__init__()

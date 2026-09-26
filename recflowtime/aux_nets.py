@@ -1,9 +1,12 @@
-"""Frozen masked critics: bidirectional interpolator f_int, causal extrapolator
-f_ext. Trained once on real data (Stage 1), then frozen; their masked
-reconstruction error on generated samples is a differentiable realism signal
-that is matched to the level real data itself exhibits (two-sided), never
-minimized outright -- minimizing it rewards the most *predictable* sequence
-(e.g. a flat line), not the most realistic one. See `losses.py`.
+"""Optional masked critics: a bidirectional interpolator and a causal
+extrapolator, trained on real data and then frozen, whose masked
+reconstruction error on generated samples is matched two-sided to the level
+real data itself exhibits rather than minimised outright -- minimising it would
+reward the most predictable sequence, such as a flat line, not the most
+realistic one.
+
+Inert unless `cfg.aux.enabled`, which is False by default; no reported result
+uses them.
 """
 import torch
 import torch.nn as nn

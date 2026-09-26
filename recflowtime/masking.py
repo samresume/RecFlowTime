@@ -1,11 +1,12 @@
-"""Masking operators for the interpolation / extrapolation critics.
+"""Masking operators for the optional masked critics in `aux_nets.py`.
 
-Retained from TIDE by design: its ablation shows removing these frozen
-critics costs the second-largest hit of any component (avg +183% Context-
-FID), so this part of the method is not a place RecFlowTime innovates -- it is
-foundation to keep. The mask itself is carried as an explicit extra channel
-(rather than TIDE-paper's zero-as-missing convention) because the data is
-normalised to a symmetric range where 0 is an ordinary observed value.
+Used only when `cfg.aux.enabled` is True, which is not the case in any reported
+run. The mask is carried as an explicit extra channel rather than by writing
+zeros into the hidden entries, because the data is normalised to a symmetric
+range in which 0 is an ordinary observed value.
+
+The masks used for imputation and forecasting at sampling time are unrelated to
+these and live in `conditional.py`.
 """
 import torch
 

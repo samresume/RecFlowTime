@@ -1,26 +1,15 @@
-"""Parameter-free frequency-domain critic -- new in RecFlowTime.
+"""A parameter-free discrepancy on the log power spectrum. Optional and off.
 
-Motivation. TIDE's two masked critics supervise *time-domain* local
-predictability, and its qualitative evaluation separately plots the power
-spectrum and autocorrelation function to check periodic structure -- but
-nothing in the TIDE training objective optimizes those directly. Its own
-related work names STDiffusion (a learnable seasonal-trend decomposition
-with wavelet distillation) as its strongest baseline and the one dataset
-TIDE does not win outright (Energy, discriminative score 0.118 vs 0.110),
-attributing the gap to architecture: "it builds temporal structure into the
-architecture, whereas TIDE keeps one undecomposed backbone." Diffusion-TS
-(ICLR 2024) reaches a similar conclusion from the objective side, adding a
-Fourier-domain reconstruction loss alongside its time-domain one.
+The batch mean and standard deviation of the log power spectrum, matched
+two-sided to an EMA reference computed from real data rather than minimised, so
+it cannot be satisfied by driving spectral energy to zero. No network and no
+pretraining stage; it is differentiable through the generated batch via
+`torch.fft.rfft`.
 
-RecFlowTime follows the objective-side route, in TIDE's own idiom: rather than
-adding a decomposition module to the backbone (more parameters, more
-inductive bias, exactly the kind of architectural commitment TIDE's related
-work contrasts itself against), it adds a *parameter-free* two-sided
-discrepancy on the log power spectrum -- no network to train, no extra
-critic pretraining stage, differentiable through the generated batch via
-`torch.fft.rfft`, matched to a real-data EMA reference exactly as the
-int/ext critics are (Section on losses in the paper) so it cannot be gamed
-by minimizing spectral energy to zero.
+This term is disabled in the reported configuration (`spectral.enabled = False`
+and `train.joint_steps = 0`) and contributes to no reported number. The
+spectral *distance* used for evaluation is a separate, non-differentiable
+quantity and lives in `metrics.py`.
 """
 import torch
 import torch.nn as nn

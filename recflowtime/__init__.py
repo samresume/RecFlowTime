@@ -1,43 +1,30 @@
-"""RecFlowTime: Path-signature and Rectified-flow with Implicit Spectral Matching.
+"""RecFlowTime: transport-coupled rectified flow for time-series generation.
 
-A generative model for multivariate time series built from four pieces and
-nothing else:
+A rectified-flow generator that differs from the standard recipe in one
+respect: instead of pairing each data sequence with an independently drawn
+noise sequence, it solves a linear assignment problem inside every minibatch
+and trains on the resulting pairs. The coupling adds no parameters, leaves
+both marginals exactly unchanged, and its cost is O(B^3) in the batch size and
+independent of sequence length. It straightens the marginal velocity field,
+which is what allows sampling in 20 function evaluations.
 
-  flow.py            **Rectified flow** as the generative core -- the
-                     centerpiece. The clean-sequence estimate is
-                     `x_hat = x_t - t*v_theta(x_t, t)`: division-free at
-                     every t, so the three mitigations an eps-parameterised
-                     DDPM needs to differentiate through its own sampler
-                     (low-noise timestep restriction, value clamping,
-                     gradient-step truncation) are unnecessary by
-                     construction rather than by tuning.
-  distributional.py  **Signature-MMD** -- two-sample distributional
-                     alignment in a depth-truncated path-signature feature
-                     space, which is graded by order-sensitive structure
-                     (net displacement, then signed area / lead-lag between
-                     feature pairs, ...) that an RBF kernel on a flattened
-                     (T*F,) vector cannot see.
-  spectral.py        **A parameter-free spectral discrepancy** -- batch mean
-                     and std of the log power spectrum, matched two-sided to
-                     an EMA reference from real data rather than minimized.
-  modules.py /       **Standard training machinery**: RoPE,
-  denoiser.py        self-conditioning, min-SNR loss weighting. Borrowed
-                     from RoFormer / Analog Bits / Hang et al.; makes the
-                     model train better, not claimed as a contribution.
+  flow.py       the rectified-flow core: the transport coupling, the floored
+                min-SNR weight, Euler sampling, and the division-free clean
+                estimate x_hat = x_t - t*v_theta(x_t, t)
+  conditional.py  imputation and forecasting from the same trained model, by
+                masked replacement inside the sampling loop
+  denoiser.py   the Transformer velocity field
+  modules.py    attention, RoPE, time embedding
+  config.py     every configuration dataclass
+  train.py      training loop, EMA, sampling
+  metrics.py    the evaluation metrics
+  ts2vec.py     the TS2Vec representation behind Context-FID
+  data.py       the four benchmarks and their splits
+  diffusion.py  a DDPM/DDIM core, used only by the `ddpm_core` ablation arm
 
-There are **no auxiliary critic networks** anywhere in the method: no
-masked interpolation/extrapolation models, no discriminator, no critic
-pretraining stage, no adversarial game. Both regularisers are non-parametric
-statistics of a batch. The local temporal coherence that masked critics are
-usually introduced to supply falls out of the spectral term instead -- by
-Wiener-Khinchin the power spectrum is the Fourier transform of the
-autocorrelation, so matching the log spectrum constrains second-order
-temporal structure directly -- with the signature term covering higher-order
-and cross-feature ordering structure on top.
-
-`aux_nets.py`, `masking.py` and `diffusion.py` exist only to construct the
-prior-method baseline (`RecFlowTimeConfig.tide_baseline(...)`) that RecFlowTime is
-compared against on the same data, model family, and metrics.
+`spectral.py`, `distributional.py`, `masking.py` and `aux_nets.py` implement
+optional objective terms that are disabled in the reported configuration; see
+`losses.py`.
 """
 from .config import (RecFlowTimeConfig, DenoiserConfig, AuxConfig, SpectralConfig,
                      CoreConfig, DistConfig, TrainConfig)
@@ -48,8 +35,10 @@ from .losses import RecFlowTimeLoss
 from .distributional import (mmd2, raw_mmd2, signature_mmd2, signature_features,
                              path_signature, distributional_loss, mmd_sanity_check)
 from .train import RecFlowTimeTrainer, build_and_train, pick_device, EMA
-from .aux_nets import AuxCritics, MaskedSeqModel          # baseline only
-from .diffusion import GaussianDiffusion                   # baseline only
+from .aux_nets import AuxCritics, MaskedSeqModel          # optional, off by default
+from .diffusion import GaussianDiffusion                   # the ddpm_core arm
+from .conditional import (impute_mask, forecast_mask, complete, complete_k,
+                          scores, linear_fill, last_value_fill)
 from . import data, metrics, masking, viz
 
 __version__ = "0.1.0"

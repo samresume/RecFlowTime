@@ -1,41 +1,26 @@
-"""Global distributional alignment: signature-MMD (novelty) vs. raw MMD (TIDE).
+"""Two-sample distributional discrepancies. Optional and off.
 
-TIDE flattens each (T, F) sequence to a single vector in R^{T*F} and runs
-RBF-kernel MMD on the flattened vectors. That representation is order-blind
-in a precise sense: an RBF kernel on flattened vectors sees T*F independent
-coordinates, so any information that lives in the *ordering* of increments
-across time -- how the trajectory turns, lead-lag between features -- has to
-be recovered indirectly, at whatever scale the single per-batch median
-bandwidth happens to be sensitive to. TIDE's own code documents the failure
-mode this invites: a mis-set bandwidth collapses the kernel to a constant in
-*either* direction (all-0 or all-1 pairwise similarities), silently zeroing
-the gradient, which is why TIDE ships a `mmd_sanity_check` health check to
-run on every new dataset.
+Maximum mean discrepancy between a real and a generated batch, either on the
+flattened (T*F,) sequence vector or in a depth-truncated path-signature feature
+space. The signature variant is graded by order-sensitive structure -- net
+displacement at level 1, signed area and lead-lag between every feature pair at
+level 2, and so on -- which an RBF kernel on a flattened vector cannot see.
 
-RecFlowTime instead embeds each sequence via its (depth-truncated) path
-signature -- the iterated-integral feature map from rough path theory
-(Chen, 1957; Lyons, 1998) already used non-adversarially for exactly this
-kind of MMD-based generative training on financial time series (signature-
-kernel MMD, e.g. arXiv:2407.19848). The signature is graded by "how much
-order-sensitive interaction" each level encodes: level 1 is the net
-displacement per feature, level 2 already contains the Levy area / lead-lag
-term between every pair of features (which of two correlated series moved
-first), and so on. MMD on these features is therefore sensitive to
-mismatches in temporal/cross-feature ordering that a flattened-vector RBF
-kernel is not, which is exactly the class of failure the local int/ext
-critics cannot see either (they score one sequence at a time, not the
-population).
+These terms are evaluated only during the joint stage, which is disabled by
+default (`train.joint_steps = 0`), so they contribute to no reported number.
+`raw_mmd2` is also used as a diagnostic by `metrics.py`.
 
-This module implements a finite-dimensional, depth-truncated approximation
-(explicit iterated-integral feature vector via Chen's identity, not the
-PDE/kernel-trick signature kernel of Kiraly & Oberhauser 2019) -- adequate
-and cheap at the depth (<=3) and feature counts (<=7) used here, and kept
-that way deliberately: exact kernel evaluation buys nothing at this scale
-and costs a custom PDE solve.
-
-Setting `dist.kind="mmd"` recovers TIDE's original flattened-vector RBF-MMD,
-using the same median-bandwidth-heuristic, multi-bandwidth-mixture, and
-negative-clamping fixes already validated there.
+`unbiased=False` (the V-statistic) is the default when a gradient is involved.
+The unbiased U-statistic is not guaranteed non-negative and its variance does
+not shrink as the two distributions approach each other, so once the generator
+is good the estimate frequently goes negative; clamping it at zero -- necessary,
+since a negative value is meaningless as a minimisation target -- zeroes the
+gradient with it and the term silently stops training the model. The
+V-statistic is a sum of positive kernel terms, so it is non-negative by
+construction, never hits the clamp, and carries a smooth gradient throughout.
+Its O(1/n) upward bias is a slowly varying offset that does not change what the
+gradient points at. `unbiased=True` remains available for evaluation, where an
+unbiased point estimate is what is wanted and no gradient is involved.
 """
 import math
 import torch
@@ -85,7 +70,7 @@ def mmd2(x, y, cfg: DistConfig, sigma2=None):
 
 
 def raw_mmd2(X, Y, cfg: DistConfig):
-    """TIDE-style MMD^2 on flattened (T, F) -> (T*F,) sequence vectors."""
+    """MMD^2 on flattened (T, F) -> (T*F,) sequence vectors."""
     return mmd2(X.flatten(1), Y.flatten(1), cfg)
 
 

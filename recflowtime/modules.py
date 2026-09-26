@@ -1,13 +1,12 @@
-"""Shared building blocks: time embedding, RoPE, attention, transformer block.
+"""Shared building blocks: time embedding, RoPE, attention, Transformer block.
 
-Novelty vs. TIDE's `modules.py`: rotary position embedding (RoPE) is applied
-inside attention instead of a fixed sinusoidal table added once at the input.
-RoPE encodes *relative* offsets between timesteps directly in the attention
-dot-product, which is a better match for signals whose dynamics depend on
-lag (periodic structure in Sines/Energy, PQRST spacing in ECG) than an
-absolute position added once before the first layer and then diffused away
-by residual updates. `use_rope=False` recovers the fixed-sinusoidal-at-input
-behaviour for the ablation baseline.
+RoPE is applied inside attention rather than as a fixed sinusoidal table added
+once at the input. It encodes relative offsets between timesteps directly in
+the attention dot product, which matches signals whose dynamics depend on lag
+-- periodic structure in Sines and Energy, PQRST spacing in ECG -- better than
+an absolute position added before the first layer and then diffused away by
+residual updates. `use_rope=False` recovers the fixed-sinusoidal behaviour and
+is what the `no_rope` ablation arm uses.
 """
 import math
 import torch
@@ -147,7 +146,7 @@ def modulate(x, shift, scale):
 class DiTBlock(nn.Module):
     """Pre-LN block with adaLN-Zero conditioning (kept for completeness/ablation;
     RecFlowTime defaults to `cond_mode='add'` + PlainBlock, following the finding in
-    the TIDE lineage that adaLN-Zero's zero-initialised gates cost convergence
+    at this scale that adaLN-Zero's zero-initialised gates cost convergence
     speed on small transformers with modest step budgets, for no stability
     benefit at this scale."""
 

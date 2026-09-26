@@ -1,43 +1,49 @@
-"""Rectified flow / conditional flow matching -- replaces TIDE's DDPM+DDIM core.
+"""Rectified flow: the generative core.
 
-Why this is the central change over TIDE. TIDE's DDPM needs a variance
-schedule, predicts eps, and recovers a clean-sequence estimate by
+Training draws t ~ U[0,1] and interpolates linearly between a data sequence
+and a noise sequence,
 
-    x0_hat = (x_tau - sqrt(1-abar_tau) * eps_theta) / sqrt(abar_tau),
+    x_t = (1-t) x + t eps,    v* = eps - x,
 
-a division that blows up as abar_tau -> 0 (the high-noise end of the
-schedule). TIDE's own code documents three separate mitigations this forces:
-restricting the auxiliary-loss timestep to the low-noise 30% of the schedule
-(`aux_tau_frac`), clamping the *value* of intermediate x0 estimates during
-differentiable sampling, and truncating backprop to only the last few
-(low-noise) DDIM steps (`grad_steps`) because the Jacobian of that division
-is otherwise ~2-5x10^2 and swamps every other loss term.
+and regresses the network onto the velocity v*, which is constant along each
+straight path. Solving the interpolation for the endpoint gives the clean
+estimate
 
-Rectified flow (Liu et al., 2022; used for time series in FlowTS/FM-TS/
-TimeFlow, 2024-25) removes the division entirely. With
+    x_hat = x_t - t v_theta(x_t, t),
 
-    X_t = (1-t) X_data + t * X_noise,   t in [0, 1],   v = X_noise - X_data,
+with no division at any t: the Jacobian with respect to v_theta is -t I, of
+norm at most 1, so the estimate is well conditioned everywhere along the path.
+An eps-parameterised diffusion recovers the same quantity through
+(x_tau - sqrt(1-abar) eps) / sqrt(abar), which blows up as abar -> 0.
 
-the network predicts the (constant, along a straight path) velocity
-v_theta(X_t, t), and solving the interpolation for the endpoint gives
+Two things are added to that standard recipe.
 
-    X_data_hat = X_t - t * v_theta(X_t, t)
+**Transport coupling** (`ot_coupling`). Independent pairing makes the
+regression target at a given x_t an average over every data point that could
+have produced it, so the marginal field is curved and integrating it needs
+many steps. Pairing instead by the minimum-cost assignment within the batch
+concentrates that average, which straightens the field. The assignment is
+solved exactly by the Hungarian/Jonker-Volgenant algorithm on the B x B
+squared-distance matrix, so its cost is O(B^3) in the batch size and does not
+grow with sequence length. Because it is a permutation of the noise draws
+within the batch, both marginals are exactly preserved and the model remains a
+valid generative model of the data.
 
-with NO division anywhere -- bounded, well-conditioned gradients at every
-t, by construction. That is what lets `x1_hat` be evaluated at any t (not
-just a restricted low-noise slice) and what lets the differentiable
-multi-step sampler used by the distributional loss skip the elaborate
-value-clamp + gradient-truncation machinery TIDE needed: a straight-line ODE
-step here is `x - dt * v_theta(x, t)`, whose gradient magnitude is directly
-set by dt and the learned field's smoothness, not by a schedule-dependent
-blow-up. `grad_steps` is kept only as a memory/compute knob, not a stability
-requirement.
+**A floored min-SNR weight** (`min_snr_floor`). The min-SNR weight vanishes as
+t -> 0 -- it is below 1e-3 at t = 0.01 -- leaving the low-noise end of the path
+almost unsupervised. That is the region where the velocity field sets local
+smoothness, and without supervision there the samples come out rougher than the
+data. The weight is clamped from below,
 
-Generation integrates the reverse ODE from t=1 (pure noise) to t=0 (data)
-with a handful of Euler steps; because the target field is (in the
-population limit) already straight, RecFlowTime needs far fewer steps than
-TIDE's 50-step DDIM sampler to reach a comparable sample (Section on
-sampling budget in the paper).
+    w(t) = max(min(SNR(t), gamma) / SNR(t), w_min),
+
+with gamma = 5 and w_min = 0.1 in the reported runs. Setting w_min = 0 recovers
+plain min-SNR.
+
+Generation integrates the reverse ODE from t = 1 to t = 0 with a fixed number
+of Euler steps; the reported runs use 20. `sample` also accepts a target and an
+observation mask, which turns the same sampler into an imputer or a forecaster
+at no extra cost in function evaluations -- see `conditional.py`.
 """
 import torch
 
@@ -62,7 +68,7 @@ class RectifiedFlow:
     def sample_aux_t(self, B, device, generator=None):
         """t biased toward the low-noise (near-data) end for the critic losses.
 
-        Unlike TIDE's `aux_tau_frac`, this is a learning-difficulty curriculum,
+        This is a learning-difficulty curriculum,
         not a numerical necessity: `predict_clean` below is division-free and
         well-behaved at every t in [0, 1].
         """
@@ -110,6 +116,19 @@ class RectifiedFlow:
         tt = t.view(-1, *([1] * (x_data.dim() - 1)))
         x_t = (1 - tt) * x_data + tt * noise
         return x_t, noise
+
+    def _carry(self, x_data, t):
+        """Carry a clean sequence to noise level t along this model's own path.
+
+        The interpolation is the same straight line the model was trained on,
+        x_t = (1-t) x + t eps, with eps drawn from the same prior as sampling,
+        so a conditioned trajectory is consistent with the unconditional one at
+        every level. t is a scalar here because every sequence in the batch is
+        integrated on the same grid.
+        """
+        eps = self.sample_prior(x_data.shape, x_data.device)
+        tt = float(t)
+        return (1.0 - tt) * x_data + tt * eps
 
     def predict_clean(self, x_t, t, v_pred, clamp=None):
         tt = t.view(-1, *([1] * (x_t.dim() - 1)))
@@ -271,9 +290,25 @@ class RectifiedFlow:
     # ---- sampling -----------------------------------------------------------
     @torch.no_grad()
     def sample(self, model, shape, n_steps=None, device=None, clamp=1.0,
-              use_self_cond=False, x_init=None):
+              use_self_cond=False, x_init=None, cond_target=None, cond_mask=None,
+              cond_after_selfcond=True):
+        """Draw samples, optionally conditioned on observed entries.
+
+        `cond_mask` is True where `cond_target` is observed. Conditioning is
+        the flow analogue of RePaint: after each Euler step the observed
+        entries are overwritten with the target carried to the same noise
+        level along this model's own interpolation, x_t = (1-t) x + t eps.
+        No gradient, no extra function evaluations, and nothing about the
+        model changes -- the NFE count is exactly the unconditional one.
+
+        `cond_after_selfcond` decides whether the overwrite happens before or
+        after the clean estimate that feeds self-conditioning is formed;
+        Appendix conditional-generation results report both.
+        """
         return self._integrate(model, shape, n_steps, device, clamp,
-                               use_self_cond, x_init, differentiable=False, grad_steps=None)
+                               use_self_cond, x_init, differentiable=False, grad_steps=None,
+                               cond_target=cond_target, cond_mask=cond_mask,
+                               cond_after_selfcond=cond_after_selfcond)
 
     def sample_differentiable(self, model, shape, n_steps, device=None, clamp=1.0,
                               use_self_cond=False, grad_steps=None, x_init=None):
@@ -281,7 +316,8 @@ class RectifiedFlow:
                                use_self_cond, x_init, differentiable=True, grad_steps=grad_steps)
 
     def _integrate(self, model, shape, n_steps, device, clamp, use_self_cond,
-                   x_init, differentiable, grad_steps):
+                   x_init, differentiable, grad_steps,
+                   cond_target=None, cond_mask=None, cond_after_selfcond=True):
         device = device or self.device
         n_steps = n_steps or self.cfg.sampling_steps
         ts = torch.linspace(1.0, 0.0, n_steps + 1, device=device)
@@ -289,6 +325,16 @@ class RectifiedFlow:
         sc = torch.zeros(shape, device=device) if use_self_cond else None
         grad_steps = n_steps if (grad_steps is None or not differentiable) else grad_steps
         cutover = max(0, n_steps - grad_steps)
+        conditional = cond_target is not None and cond_mask is not None
+        if conditional:
+            cond_target = cond_target.to(device)
+            cond_mask = cond_mask.to(device)
+            # The observed entries start at the level the integration starts
+            # from, so step 0 already sees a consistent partially-known state.
+            x = torch.where(cond_mask, self._carry(cond_target, ts[0]), x)
+
+        def _replace(z, t):
+            return torch.where(cond_mask, self._carry(cond_target, t), z)
 
         def _step(x, sc, i):
             t_cur, t_next = ts[i], ts[i + 1]
@@ -297,6 +343,12 @@ class RectifiedFlow:
             x_clean = self.predict_clean(x, t_vec, v, clamp=clamp)
             dt = (t_cur - t_next)
             x_next = x - dt * v
+            if conditional:
+                x_next = _replace(x_next, t_next)
+                if cond_after_selfcond:
+                    # the clean estimate the next step conditions on also knows
+                    # the observations, which is what it will actually be given
+                    x_clean = torch.where(cond_mask, cond_target, x_clean)
             return x_next, (x_clean.detach() if not differentiable else x_clean)
 
         if cutover > 0:

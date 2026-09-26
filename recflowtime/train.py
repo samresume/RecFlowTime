@@ -1,16 +1,15 @@
-"""RecFlowTime trainer with EMA and health diagnostics.
+"""Training loop, EMA, and sampling.
 
-RecFlowTime trains in **two** stages -- flow warmup, then joint optimisation with
-the signature-MMD and spectral terms switched on. There is no critic
-pretraining stage, because there are no critics: both regularisers are
-non-parametric statistics of a batch and need nothing fitted in advance.
+The reported configuration trains in one stage: the flow-matching loss alone,
+for `warmup_steps` steps, with an exponential moving average of the weights at
+decay 0.999 that is what sampling uses. A second `joint_steps` stage exists for
+the optional regularisers in `losses.py` and is disabled by default
+(`joint_steps = 0`), as is the optional critic stage (`aux.enabled = False`),
+so neither contributes to any reported result.
 
-The same trainer also builds the TIDE baseline for comparison
-(`RecFlowTimeConfig.tide_baseline(...)`), which does need the extra critic stage;
-`cfg.aux.enabled` is what switches it on, and `cfg.core.kind` selects the
-rectified-flow or DDPM core. Everything else -- data pipeline, model
-family, optimiser, EMA, metrics -- is shared, so comparisons are
-apples-to-apples by construction.
+`core.kind` selects the rectified-flow or the DDPM core; everything else -- data
+pipeline, model family, optimiser, EMA, metrics -- is shared across arms, so
+ablations differ only in the stated respect.
 """
 import copy
 import json
@@ -84,10 +83,15 @@ class RecFlowTimeTrainer:
             self.core.fit_noise_spectrum(X_train, seed=cfg.train.seed)
         self.ema = None
         self.history = defaultdict(list)
+        extras = [n for n, on in (("spectral", cfg.spectral.enabled),
+                                  (f"dist:{cfg.dist.kind}", cfg.train.joint_steps > 0),
+                                  ("critics", cfg.aux.enabled)) if on]
         self._log(f"device={self.device}  core={cfg.core.kind}  denoiser params="
-                  f"{self.model.n_params():,}  rope={cfg.denoiser.use_rope}  "
-                  f"self_cond={cfg.denoiser.use_self_cond}  spectral={cfg.spectral.enabled}  "
-                  f"dist={cfg.dist.kind}  critics={cfg.aux.enabled}")
+                  f"{self.model.n_params():,}  ot_coupling={cfg.core.ot_coupling}  "
+                  f"rope={cfg.denoiser.use_rope}  "
+                  f"self_cond={cfg.denoiser.use_self_cond}  "
+                  f"min_snr={cfg.core.use_min_snr} (floor {cfg.core.min_snr_floor:g})  "
+                  f"extra terms: {', '.join(extras) if extras else 'none'}")
 
     def _log(self, msg):
         if self.verbose:
@@ -99,9 +103,9 @@ class RecFlowTimeTrainer:
         for k, v in logs.items():
             self.history[k].append(v)
 
-    # ======================== optional pre-stage: critics (BASELINE ONLY) =====
+    # ============== optional pre-stage: critics (off unless aux.enabled) ======
     def train_critics(self, steps=None, early_stop_patience=6):
-        """No-op for RecFlowTime (no critics); trains them for the TIDE baseline."""
+        """No-op unless `cfg.aux.enabled`; see `aux_nets.py`."""
         if self.critics is None:
             self._log("\n[no critic stage] RecFlowTime has no auxiliary critics -- "
                       "both regularisers are non-parametric batch statistics.")
@@ -179,7 +183,7 @@ class RecFlowTimeTrainer:
         )
         self.ema = EMA(self.model, tc.ema_decay)
 
-        n_stages = 2
+        n_stages = sum(1 for n in (warmup, joint) if n > 0)
         global_step = 0
         for k, (stage, n, aux_on, dist_on) in enumerate(
                 (("warmup", warmup, False, False),
@@ -187,7 +191,8 @@ class RecFlowTimeTrainer:
             if n == 0:
                 continue
             extra = "" if stage == "warmup" else f"  regularisers={aux_on} dist={dist_on}"
-            self._log(f"\n[stage {k}/{n_stages}] {self.cfg.core.kind} {stage}  ({n} steps){extra}")
+            label = f"[stage {k}/{n_stages}] " if n_stages > 1 else ""
+            self._log(f"\n{label}{self.cfg.core.kind} {stage}  ({n} steps){extra}")
             t0 = time.time()
             for i in range(1, n + 1):
                 x = self.dl.next().to(self.device)

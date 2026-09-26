@@ -1,6 +1,6 @@
 """A compact TS2Vec encoder, for Context-FID.
 
-Context-FID (Paul et al., 2022) is a Frechet distance computed in the
+Context-FID (Jeha et al., ICLR 2022) is a Frechet distance computed in the
 representation space of a TS2Vec encoder (Yue et al., AAAI 2022) fitted on
 real data. It is the standard distributional metric in this literature, and
 it is not interchangeable with a Frechet distance in some other embedding --

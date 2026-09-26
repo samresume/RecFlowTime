@@ -1,10 +1,13 @@
-"""The four benchmark datasets: Sines, ECG (synthetic), Stocks, Energy (real).
+"""The four benchmarks: Sines and ECG (synthetic), Stocks and Energy (real).
 
-Independently implemented (not imported from the TIDE package) but matched
-to the same benchmark specification used across the time series generation
-literature (TimeGAN and follow-ups) so results are comparable: Sines from
-the closed-form generator, ECG as synthetic PQRST-morphology sequences,
-Stocks/Energy as sliding windows over the standard real-world CSVs.
+Matched to the benchmark specification used across the time-series generation
+literature so that results are comparable: Sines from the closed-form
+generator, ECG as synthetic PQRST-morphology sequences, Stocks and Energy as
+sliding windows over the standard CSVs. Windows are cut with stride 1 and each
+feature is scaled to [-1, 1] over all windows.
+
+`scripts/export_splits.py` writes the resulting arrays to `data/splits/`, which
+is what every reported number is computed from.
 """
 import os
 import numpy as np

@@ -1,12 +1,23 @@
-"""Evaluation metrics, following the standard TimeGAN-lineage protocol so
-numbers are comparable across methods on these four benchmarks.
+"""Evaluation metrics.
 
-`discriminative_score` / `predictive_score` are the field-standard GRU-based
-tests. `frechet_score` is a Frechet distance in a small GRU-autoencoder
-embedding fit on real data only -- a legitimate FID-style distributional
-metric, but (as in TIDE) NOT the TS2Vec-based Context-FID reported in
-published papers, since no pretrained TS2Vec is bundled here; the two are
-not numerically comparable and should not be tabulated together.
+Two kinds, and the difference matters when reading small gaps.
+
+*Learned* -- `discriminative_score`, `predictive_score`, and Context-FID --
+train a network on the samples and therefore carry estimator variance even when
+the samples are held fixed. The discriminative score's spread across evaluator
+seeds on fixed data was measured here at 0.02-0.11, which exceeds many
+published gaps between methods on these benchmarks; report them over several
+seeds.
+
+*Deterministic* -- `correlation_score`, `spectral_distance`, `delta_distance`,
+`acf_distance` -- are closed-form functions of the samples and carry no
+evaluator variance, so differences in them are exact.
+
+`frechet_score` is a Frechet distance in a small GRU-autoencoder embedding. It
+is a legitimate distributional metric but it is *not* Context-FID and the two
+are not numerically comparable; Context-FID is computed from the TS2Vec
+encoder in `ts2vec.py`. `benchmark_metrics.py` implements the stricter protocol
+used for the published comparison.
 """
 import numpy as np
 import torch

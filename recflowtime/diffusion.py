@@ -1,14 +1,12 @@
-"""Classic Gaussian DDPM + DDIM core -- kept only as the ablation baseline.
+"""Gaussian DDPM with DDIM sampling -- the `ddpm_core` ablation arm only.
 
-Exposes the same method surface as `flow.RectifiedFlow` (`flow_loss`,
-`x1_hat`, `sample`, `sample_differentiable`) so `losses.py`/`train.py` can
-swap generative cores via `RecFlowTimeConfig.core.kind` without touching the
-training loop. Selecting `core.kind="ddpm"` (equivalently
-`RecFlowTimeConfig.tide_baseline(...)`) reproduces TIDE's own generative
-mechanics: eps-prediction on a cosine schedule, x0 recovered through the
-division `(x_tau - sqrt(1-abar)*eps) / sqrt(abar)`, and DDIM sampling with
-gradient-truncated backprop for the differentiable branch -- see `flow.py`'s
-module docstring for why RecFlowTime replaces this.
+Exposes the same surface as `flow.RectifiedFlow` (`flow_loss`, `x1_hat`,
+`sample`, `sample_differentiable`), so `core.kind` swaps the generative core
+without touching the training loop. The arm keeps the transport coupling and
+the floored weight and changes only the core, so a difference in score is
+attributable to the core alone. Clean-sequence recovery here goes through the
+division (x_tau - sqrt(1-abar) eps) / sqrt(abar), which is the term rectified
+flow removes; see `flow.py`.
 """
 import math
 import torch

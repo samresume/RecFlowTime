@@ -1,7 +1,6 @@
-"""Plotting helpers for a training report: samples, PCA/t-SNE, ACF, spectrum,
-loss curves. Mirrors the diagnostics TIDE's own report checks qualitatively,
-so a RecFlowTime run and a TIDE-baseline run (same trainer, `core.kind="ddpm"`)
-produce directly comparable figures.
+"""Plotting helpers for a training report: samples, PCA and t-SNE, ACF, power
+spectrum, loss curves. Every arm is plotted by the same code, so figures from
+different configurations are directly comparable.
 """
 import os
 os.environ.setdefault("OMP_NUM_THREADS", "1")  # avoid the torch+sklearn TSNE segfault

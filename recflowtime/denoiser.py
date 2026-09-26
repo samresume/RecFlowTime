@@ -1,23 +1,26 @@
-"""v_theta / eps_theta(X_t, t, x_self_cond) -- the shared backbone.
+"""The velocity field v_theta(x_t, t, x_self_cond).
 
-Bidirectional self-attention over timesteps is kept unchanged from TIDE: its
-own ablation shows removing attention for a convolutional U-Net costs more
-than any other single change (+554% Context-FID, the largest effect in that
-study), so this is the one architectural choice RecFlowTime does not touch.
-Two additions layer on top of it:
+A pre-norm bidirectional Transformer over the time axis. Every timestep is
+projected to a token, the stack attends over all T tokens in both directions,
+and the output projects back to the feature dimension, so the shape is
+unchanged end to end. Attention is bidirectional rather than causal because the
+model generates a whole window at once and nothing about the task is
+autoregressive.
 
-  * RoPE (`use_rope`) instead of a fixed sinusoidal table added once at the
-    input -- see `modules.py`.
-  * Self-conditioning (`use_self_cond`, Chen et al. 2022): the network also
-    reads its own previous clean-data estimate. At generation time this is
-    free (the reverse ODE already computes that estimate at every step); at
-    training time it costs one extra no-grad forward pass half the time
-    (`self_cond_prob`).
+Two additions to that backbone:
 
-Conditioning on the diffusion step / flow time is additive at the input
-(`cond_mode='add'`), following the same finding used in TIDE: adaLN-Zero's
-zero-initialised gates trade early convergence speed for stability this
-model scale does not need. `cond_mode='adaln'` is kept for completeness.
+  * RoPE (`use_rope`): rotary positions applied inside attention rather than a
+    fixed sinusoidal table added once at the input, so attention sees relative
+    offsets between timesteps directly. See `modules.py`.
+  * Self-conditioning (`use_self_cond`): the network also reads its own
+    previous clean estimate. At generation this is free, since the sampler
+    already computes that estimate at every step; in training it costs one
+    extra no-grad forward pass on half the batches.
+
+The flow time enters additively at the input (`cond_mode='add'`). adaLN-Zero is
+available as `cond_mode='adaln'` but is not used in the reported runs: its
+zero-initialised gates trade early convergence for a stability this model scale
+does not need.
 """
 import torch
 import torch.nn as nn
