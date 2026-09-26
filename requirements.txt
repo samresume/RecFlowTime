@@ -1,9 +1,10 @@
-# Tested with Python 3.13. Versions are the ones used for the reported results;
-# nearby versions are expected to work.
+# Developed and tested with Python 3.13 and PyTorch 2.1; nearby versions are
+# expected to work. The lower bounds below are the oldest versions the code is
+# known to run on, not the versions behind the reported numbers.
 torch>=2.1
 numpy>=1.24
 scipy>=1.10          # linear_sum_assignment, for the transport coupling
-scikit-learn>=1.3    # MinMaxScaler, PCA and t-SNE in the notebooks
+scikit-learn>=1.3    # PCA and t-SNE in the notebooks
 pandas>=2.0          # reading the Stocks and Energy CSVs
 matplotlib>=3.7
-jupyter>=1.0
+jupyter>=1.0         # only for the three notebooks; the scripts do not need it
