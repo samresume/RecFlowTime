@@ -1,0 +1,195 @@
+{
+  "dataset": "sines",
+  "variant": "ours",
+  "seed": 0,
+  "meta": {
+    "name": "sines",
+    "seq_len": 64,
+    "n_features": 4,
+    "n": 10000
+  },
+  "train_time_s": 1688.0403230190277,
+  "gen_time_s": 4.211672067642212,
+  "denoiser_params": 523108,
+  "probe": [
+    {
+      "step": 500,
+      "discriminative": 0.5,
+      "predictive": 0.6066996455192566
+    },
+    {
+      "step": 1000,
+      "discriminative": 0.5,
+      "predictive": 0.31969964504241943
+    },
+    {
+      "step": 1500,
+      "discriminative": 0.4833333333333333,
+      "predictive": 0.162003755569458
+    },
+    {
+      "step": 2000,
+      "discriminative": 0.41666666666666663,
+      "predictive": 0.1210828572511673
+    },
+    {
+      "step": 2500,
+      "discriminative": 0.1875,
+      "predictive": 0.10047222673892975
+    },
+    {
+      "step": 3000,
+      "discriminative": 0.025000000000000022,
+      "predictive": 0.09180160611867905
+    },
+    {
+      "step": 3500,
+      "discriminative": 0.01666666666666672,
+      "predictive": 0.08773361146450043
+    },
+    {
+      "step": 4000,
+      "discriminative": 0.01666666666666672,
+      "predictive": 0.0855676606297493
+    },
+    {
+      "step": 4500,
+      "discriminative": 0.012499999999999956,
+      "predictive": 0.08442386239767075
+    },
+    {
+      "step": 5000,
+      "discriminative": 0.0,
+      "predictive": 0.08399312198162079
+    },
+    {
+      "step": 5500,
+      "discriminative": 0.025000000000000022,
+      "predictive": 0.08394784480333328
+    },
+    {
+      "step": 6000,
+      "discriminative": 0.016666666666666663,
+      "predictive": 0.08388525992631912
+    },
+    {
+      "step": 6500,
+      "discriminative": 0.016666666666666663,
+      "predictive": 0.08393544703722
+    },
+    {
+      "step": 7000,
+      "discriminative": 0.00833333333333336,
+      "predictive": 0.08390378206968307
+    },
+    {
+      "step": 7500,
+      "discriminative": 0.016666666666666663,
+      "predictive": 0.08397023379802704
+    },
+    {
+      "step": 8000,
+      "discriminative": 0.016666666666666663,
+      "predictive": 0.08410247415304184
+    }
+  ],
+  "budget": {
+    "warmup_steps": 8000,
+    "joint_steps": 0
+  },
+  "config": {
+    "denoiser": {
+      "n_features": 4,
+      "seq_len": 64,
+      "d_model": 96,
+      "n_heads": 4,
+      "n_layers": 4,
+      "d_ff_mult": 4,
+      "dropout": 0.0,
+      "causal": false,
+      "cond_mode": "add",
+      "use_rope": true,
+      "use_self_cond": true,
+      "use_lag_bias": false
+    },
+    "aux": {
+      "enabled": false,
+      "n_features": 4,
+      "seq_len": 64,
+      "d_model": 64,
+      "n_heads": 4,
+      "n_layers": 3,
+      "dropout": 0.0,
+      "gamma_range": [
+        0.2,
+        0.35
+      ]
+    },
+    "spectral": {
+      "enabled": false,
+      "n_bins": null,
+      "eps": 1e-06,
+      "ref_ema_decay": 0.99
+    },
+    "core": {
+      "kind": "flow",
+      "n_steps": 500,
+      "schedule": "cosine",
+      "cosine_s": 0.008,
+      "aux_tau_frac": 0.3,
+      "min_snr_gamma": 5.0,
+      "min_snr_floor": 0.1,
+      "use_min_snr": true,
+      "precond_lambda": 0.0,
+      "precond_lags": [
+        1
+      ],
+      "colored_prior": false,
+      "ot_coupling": true,
+      "sampling_steps": 20
+    },
+    "dist": {
+      "kind": "sigmmd",
+      "bandwidth_scales": [
+        0.25,
+        0.5,
+        1.0,
+        2.0,
+        4.0
+      ],
+      "unbiased": false,
+      "clamp_min": 0.0,
+      "sig_depth": 3,
+      "sig_time_aug": true
+    },
+    "train": {
+      "batch_size": 128,
+      "lr": 0.0002,
+      "aux_lr": 0.001,
+      "betas": [
+        0.9,
+        0.96
+      ],
+      "weight_decay": 0.0,
+      "grad_clip": 1.0,
+      "ema_decay": 0.999,
+      "warmup_steps": 8000,
+      "joint_steps": 0,
+      "aux_steps": 2000,
+      "lambda_ext": 1.0,
+      "lambda_int": 1.0,
+      "lambda_spec": 1.0,
+      "lambda_dist": 1.0,
+      "ref_ema_decay": 0.99,
+      "dist_every": 4,
+      "dist_sample_steps": 16,
+      "dist_grad_steps": 4,
+      "dist_batch": 64,
+      "sample_clamp": 1.5,
+      "log_every": 100,
+      "val_every": 1000000000,
+      "seed": 0,
+      "device": null
+    }
+  }
+}
