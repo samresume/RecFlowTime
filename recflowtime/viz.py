@@ -8,7 +8,13 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")  # avoid the torch+sklearn TSNE se
 import numpy as np
 import torch
 import matplotlib
-matplotlib.use("Agg")
+# The backend is deliberately NOT forced here. `training_report` only ever
+# writes to a file, which works under any backend, and matplotlib already
+# falls back to Agg when no display is available. Calling matplotlib.use("Agg")
+# at import time would switch the backend for whoever imported this package --
+# which silently stops figures from displaying in Jupyter, since importing
+# `recflowtime` pulls this module in. Set MPLBACKEND=Agg if you need to force
+# it from a script.
 import matplotlib.pyplot as plt
 
 from .metrics import acf
